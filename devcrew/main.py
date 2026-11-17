@@ -15,10 +15,16 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("requirement")
     parser.add_argument("--scenario", default="happy")
+    parser.add_argument("--planner", choices=["mock", "real"], default="mock",
+                        help="use the real Planner with mock downstream Agents")
     parser.add_argument("--out", default="results/runs")
     args = parser.parse_args()
 
-    app = build_graph(MOCK_NODES)
+    nodes = dict(MOCK_NODES)
+    if args.planner == "real":
+        from devcrew.agents.planner import planner_node
+        nodes["planner"] = planner_node
+    app = build_graph(nodes)
     task_id = f"mock-{args.scenario}"
     final = app.invoke(initial_state(args.requirement, task_id=task_id),
                        config={"recursion_limit": RECURSION_LIMIT})
