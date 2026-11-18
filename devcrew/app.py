@@ -1,4 +1,4 @@
-"""DevCrew Streamlit UI backed by the compiled LangGraph update stream."""
+"""Simple DevCrew UI; internal agents can be replaced without changing the page."""
 
 from __future__ import annotations
 
@@ -12,43 +12,46 @@ from devcrew.mocks import MOCK_NODES
 from devcrew.state import initial_state
 
 
-COLOURS = {
-    "planner": "blue",
-    "coder": "green",
-    "tester": "orange",
-    "sandbox": "orange",
-    "reviewer": "violet",
+AGENT_COLOURS = {
+    "planner": "#64748b",
+    "coder": "#2563eb",
+    "tester": "#0d9488",
+    "sandbox": "#d97706",
+    "reviewer": "#7c3aed",
 }
 
 
-def _merge_update(state: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
+def _merge(state: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
     merged = dict(state)
     for key, value in update.items():
-        if key in {"trace", "error_history"}:
-            merged[key] = [*merged.get(key, []), *value]
-        else:
-            merged[key] = value
+        merged[key] = (
+            [*merged.get(key, []), *value]
+            if key in {"trace", "error_history"}
+            else value
+        )
     return merged
 
 
-def _run(requirement: str, scenario: str) -> dict[str, Any]:
+def _run(requirement: str) -> dict[str, Any]:
     graph = build_graph({**MOCK_NODES, "reviewer": reviewer_node})
-    state = initial_state(requirement, task_id=f"mock-{scenario}")
+    state = initial_state(requirement, task_id="mock-happy")
     with st.status("Running DevCrew", expanded=True, state="running") as status:
         for update in graph.stream(
             state, stream_mode="updates", config={"recursion_limit": RECURSION_LIMIT}
         ):
             for node, payload in update.items():
-                state = _merge_update(state, payload)
+                state = _merge(state, payload)
                 status.write(f"{node}: completed")
         status.update(label="DevCrew run complete", state="complete", expanded=False)
     return state
 
 
-def _render_results(state: dict[str, Any]) -> None:
-    plan = state.get("plan")
-    report = state.get("test_report")
-    review = state.get("review")
+def _results(state: dict[str, Any], requirement: str) -> None:
+    plan, report, review = (
+        state.get("plan"),
+        state.get("test_report"),
+        state.get("review"),
+    )
     st.subheader("Execution results")
     solution = state.get("code_files", {}).get("solution.py")
     if solution:
@@ -63,10 +66,15 @@ def _render_results(state: dict[str, Any]) -> None:
         ["Plan", "Code", "Tests", "Review"]
     )
     with plan_tab:
-        st.json(plan.model_dump() if plan else {})
+        st.markdown("#### Original requirement")
+        st.write(requirement)
+        if plan:
+            st.markdown("#### Acceptance criteria")
+            for item in [*plan.acceptance_criteria, *plan.edge_cases]:
+                st.markdown(f"- **{item.id}** - {item.text}")
     with code_tab:
         for name, content in state.get("code_files", {}).items():
-            st.markdown(f"**{name}**")
+            st.markdown(f"#### {name}")
             st.code(content, language="python")
     with tests_tab:
         if report:
@@ -76,72 +84,109 @@ def _render_results(state: dict[str, Any]) -> None:
             st.json(report.model_dump(exclude={"raw_output"}))
     with review_tab:
         if review:
-            st.metric("Final verdict", review.verdict)
+            st.markdown(f"#### Final verdict: :violet[{review.verdict}]")
+            if not review.comments:
+                st.success("No findings in this review.")
             for comment in review.comments:
-                st.warning(
-                    f"{comment.severity.upper()} - {comment.file}:{comment.line}\n\n"
-                    f"{comment.comment}\n\nSuggestion: {comment.suggestion}"
-                )
-            st.json(review.model_dump())
+                with st.container(border=True):
+                    st.markdown(
+                        f"**{comment.severity.upper()} - {comment.file}:"
+                        f"{comment.line}**"
+                    )
+                    st.write(comment.comment)
+                    st.caption(f"Suggested action: {comment.suggestion}")
 
 
 def main() -> None:
     st.set_page_config(
         page_title="DevCrew", page_icon=":material/groups:", layout="wide"
     )
-    st.title("DevCrew")
-    st.caption("MULTI-AGENT SOFTWARE DEVELOPMENT SYSTEM")
-    st.session_state.setdefault("final_state", None)
+    st.html("""<style>
+    .trace-card {padding:.8rem 1rem;border:1px solid rgba(128,128,128,.2);
+    border-left:5px solid #64748b;border-radius:10px;margin-bottom:.55rem}
+    .trace-heading {display:flex;justify-content:space-between;gap:12px}
+    .muted {color:#8b949e;font-size:.85rem}
+    </style>""")
+    st.session_state.setdefault("result", None)
+    st.session_state.setdefault("run_requirement", "")
+
+    title, badge = st.columns([5, 1], vertical_alignment="center")
+    with title:
+        st.title("DevCrew")
+        st.caption("MULTI-AGENT SOFTWARE DEVELOPMENT SYSTEM")
+    with badge:
+        st.badge("UI DEMO", icon=":material/dashboard:")
 
     with st.sidebar:
         st.header("New task")
         requirement = st.text_area(
             "Programming requirement",
-            "Create a Python function that adds two integers.",
+            value=st.session_state.run_requirement
+            or "Create a Python function that adds two integers.",
             height=150,
-        )
-        scenario = st.selectbox(
-            "Mock upstream scenario",
-            ["happy", "code_bug", "test_bug", "spec", "review", "stall"],
+            placeholder="Describe what you want DevCrew to build...",
         )
         run = st.button(
-            "Run DevCrew",
-            type="primary",
-            width="stretch",
-            icon=":material/play_arrow:",
+            "Run DevCrew", type="primary", width="stretch", icon=":material/play_arrow:"
         )
         if st.button("Clear results", width="stretch", icon=":material/delete_sweep:"):
-            st.session_state.final_state = None
-        st.caption(
-            "The Reviewer is LLM-enabled. Planner, Coder, and Tester use group mocks "
-            "until their real nodes are integrated."
-        )
+            st.session_state.result = None
+            st.session_state.run_requirement = ""
 
-    if run:
-        st.session_state.final_state = _run(requirement, scenario)
-    state = st.session_state.final_state
+    if run and requirement.strip():
+        st.session_state.run_requirement = requirement.strip()
+        st.session_state.result = _run(requirement.strip())
+    elif run:
+        st.warning("Please enter a programming requirement.")
+
+    state = st.session_state.result
     if not state:
-        st.info(
-            "Enter a requirement and run DevCrew to view the workflow trace and "
-            "final artifacts."
-        )
+        with st.container(border=True):
+            st.caption("WORKSPACE")
+            st.subheader("Build, test, and review with multiple agents.")
+            st.caption("Enter a programming task in the sidebar and run DevCrew.")
+        for column, (name, text) in zip(
+            st.columns(4),
+            [
+                (
+                    "Planner",
+                    "Breaks down the requirement and defines acceptance criteria.",
+                ),
+                ("Coder", "Generates an implementation from the plan and feedback."),
+                ("Tester", "Executes tests and sends evidence or failure feedback."),
+                (
+                    "Reviewer",
+                    "Checks requirement coverage, code quality, and review findings.",
+                ),
+            ],
+            strict=False,
+        ):
+            with column:
+                st.markdown(f"### {name}")
+                st.caption(text)
         return
 
     trace = state.get("trace", [])
+    st.subheader("Execution overview")
     metrics = st.columns(4)
-    metrics[0].metric("Current node", trace[-1].node if trace else "idle", border=True)
-    metrics[1].metric("Test iterations", state.get("test_iters", 0), border=True)
-    metrics[2].metric("Review iterations", state.get("review_iters", 0), border=True)
-    metrics[3].metric(
-        "Final verdict", getattr(state.get("review"), "verdict", "-"), border=True
-    )
+    metrics[0].metric("Agent executions", len(trace))
+    metrics[1].metric("Max iteration", state.get("test_iters", 0))
+    metrics[2].metric("Tests passed", getattr(state.get("test_report"), "passed", 0))
+    metrics[3].metric("Final verdict", getattr(state.get("review"), "verdict", "-"))
     st.subheader("Agent execution trace")
     for message in trace:
-        st.markdown(
-            f":{COLOURS.get(message.sender, 'gray')}[**{message.node}**] - "
-            f"{message.summary}"
+        colour = AGENT_COLOURS.get(message.sender, "#64748b")
+        card = (
+            f'<div class="trace-card" style="border-left-color:{colour}">'
+            f'<div class="trace-heading"><strong>{message.node}</strong>'
+            f'<span class="muted">Iteration {message.iteration}</span></div>'
+            f"<div>{message.summary}</div></div>"
         )
-    _render_results(state)
+        st.markdown(
+            card,
+            unsafe_allow_html=True,
+        )
+    _results(state, st.session_state.run_requirement)
 
 
 if __name__ == "__main__":
