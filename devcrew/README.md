@@ -38,10 +38,24 @@ Run the Streamlit UI:
 streamlit run app.py
 ```
 
-The current UI uses upstream mock nodes until the group replaces them with the
-real Planner, Coder, and Tester nodes. Its Reviewer node is real. The UI reads
-graph updates and Shared State; when real nodes are supplied, only the node map
-needs to change.
+The current UI reviews a prepared addition example: the plan, implementation,
+and test-writing are supplied by mock nodes. Pytest, static analysis, and the
+LLM Reviewer run for real. The downloaded `solution.py` is the example code;
+custom requirements will be supported after the other agents are integrated.
+
+`devcrew/ui_adapter.py` owns the temporary example input and node bindings,
+keeping them separate from the UI and the shared graph. Replace those bindings
+and the example input when the real agents are ready.
+
+The single-page UI provides four-stage progress indicators, a 420px scrolling
+execution timeline, result tabs, and a direct solution download. After a code
+fix, the progress indicators invalidate the previous test and review results
+until testing and review run again.
+
+The UI loads its project-local `.env` in preference to inherited environment
+values. For an OpenAI-compatible provider, set `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, and `OPENAI_MODEL` (or `DEVCREW_MODEL`, which takes priority).
+Credentials and model response caches are local and must not be committed.
 
 ## Reviewer contract
 
