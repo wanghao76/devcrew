@@ -1,23 +1,25 @@
-"""Simple DevCrew UI; internal agents can be replaced without changing the page."""
+"""DevCrew's single-page workflow UI."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import streamlit as st
+from openai import AuthenticationError
 
 from devcrew.agents.reviewer import reviewer_node
 from devcrew.graph import RECURSION_LIMIT, build_graph
+from devcrew.llm import LLMConfigurationError, LLMResponseError
 from devcrew.mocks import MOCK_NODES
 from devcrew.state import initial_state
 
 
-AGENT_COLOURS = {
-    "planner": "#64748b",
-    "coder": "#2563eb",
-    "tester": "#0d9488",
-    "sandbox": "#d97706",
-    "reviewer": "#7c3aed",
+COLOURS = {
+    "planner": "blue",
+    "coder": "green",
+    "tester": "orange",
+    "sandbox": "orange",
+    "reviewer": "violet",
 }
 
 
@@ -33,6 +35,7 @@ def _merge(state: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run(requirement: str) -> dict[str, Any]:
+    """Run today's demo nodes; later replace only this internal node mapping."""
     graph = build_graph({**MOCK_NODES, "reviewer": reviewer_node})
     state = initial_state(requirement, task_id="mock-happy")
     with st.status("Running DevCrew", expanded=True, state="running") as status:
@@ -46,7 +49,7 @@ def _run(requirement: str) -> dict[str, Any]:
     return state
 
 
-def _results(state: dict[str, Any], requirement: str) -> None:
+def _render_results(state: dict[str, Any], requirement: str) -> None:
     plan, report, review = (
         state.get("plan"),
         state.get("test_report"),
@@ -97,96 +100,90 @@ def _results(state: dict[str, Any], requirement: str) -> None:
                     st.caption(f"Suggested action: {comment.suggestion}")
 
 
+def _render_empty() -> None:
+    with st.container(border=True):
+        st.caption("WORKSPACE")
+        st.subheader("Build, test, and review with multiple agents.")
+        st.caption("Describe what you want built, then run DevCrew.")
+    roles = [
+        ("Planner", "Breaks down the requirement and defines acceptance criteria."),
+        ("Coder", "Generates an implementation from the plan and feedback."),
+        ("Tester", "Executes tests and sends evidence or failure feedback."),
+        ("Reviewer", "Checks requirement coverage, code quality, and review findings."),
+    ]
+    for column, (name, description) in zip(st.columns(4), roles, strict=False):
+        with column:
+            st.markdown(f"### {name}")
+            st.caption(description)
+
+
 def main() -> None:
     st.set_page_config(
         page_title="DevCrew", page_icon=":material/groups:", layout="wide"
     )
-    st.html("""<style>
-    .trace-card {padding:.8rem 1rem;border:1px solid rgba(128,128,128,.2);
-    border-left:5px solid #64748b;border-radius:10px;margin-bottom:.55rem}
-    .trace-heading {display:flex;justify-content:space-between;gap:12px}
-    .muted {color:#8b949e;font-size:.85rem}
-    </style>""")
+    st.title("DevCrew")
+    st.caption("MULTI-AGENT SOFTWARE DEVELOPMENT SYSTEM")
     st.session_state.setdefault("result", None)
     st.session_state.setdefault("run_requirement", "")
 
-    title, badge = st.columns([5, 1], vertical_alignment="center")
-    with title:
-        st.title("DevCrew")
-        st.caption("MULTI-AGENT SOFTWARE DEVELOPMENT SYSTEM")
-    with badge:
-        st.badge("UI DEMO", icon=":material/dashboard:")
-
-    with st.sidebar:
-        st.header("New task")
+    with st.form("task_form", border=True):
         requirement = st.text_area(
-            "Programming requirement",
-            value=st.session_state.run_requirement
-            or "Create a Python function that adds two integers.",
-            height=150,
-            placeholder="Describe what you want DevCrew to build...",
+            "What would you like DevCrew to build?",
+            value=st.session_state.run_requirement,
+            placeholder="Describe a Python programming task...",
+            height=120,
         )
-        run = st.button(
-            "Run DevCrew", type="primary", width="stretch", icon=":material/play_arrow:"
+        run = st.form_submit_button(
+            "Run DevCrew", type="primary", width="content", icon=":material/play_arrow:"
         )
-        if st.button("Clear results", width="stretch", icon=":material/delete_sweep:"):
-            st.session_state.result = None
-            st.session_state.run_requirement = ""
+    if st.button("Clear results", width="content", icon=":material/delete_sweep:"):
+        st.session_state.result = None
+        st.session_state.run_requirement = ""
 
-    if run and requirement.strip():
-        st.session_state.run_requirement = requirement.strip()
-        st.session_state.result = _run(requirement.strip())
-    elif run:
-        st.warning("Please enter a programming requirement.")
+    if run:
+        if not requirement.strip():
+            st.warning("Please enter a programming requirement.")
+        else:
+            try:
+                st.session_state.run_requirement = requirement.strip()
+                st.session_state.result = _run(requirement.strip())
+            except AuthenticationError:
+                st.error(
+                    "The model API key was rejected. Update OPENAI_API_KEY. "
+                    "For a compatible provider, also set OPENAI_BASE_URL and "
+                    "OPENAI_MODEL in the environment or .env.",
+                    title="Model authentication failed",
+                )
+            except (LLMConfigurationError, LLMResponseError) as error:
+                st.error(str(error), title="Model configuration failed")
+            except Exception:
+                st.error(
+                    "The workflow could not complete. Check the terminal log for "
+                    "details.",
+                    title="Workflow failed",
+                )
 
     state = st.session_state.result
     if not state:
-        with st.container(border=True):
-            st.caption("WORKSPACE")
-            st.subheader("Build, test, and review with multiple agents.")
-            st.caption("Enter a programming task in the sidebar and run DevCrew.")
-        for column, (name, text) in zip(
-            st.columns(4),
-            [
-                (
-                    "Planner",
-                    "Breaks down the requirement and defines acceptance criteria.",
-                ),
-                ("Coder", "Generates an implementation from the plan and feedback."),
-                ("Tester", "Executes tests and sends evidence or failure feedback."),
-                (
-                    "Reviewer",
-                    "Checks requirement coverage, code quality, and review findings.",
-                ),
-            ],
-            strict=False,
-        ):
-            with column:
-                st.markdown(f"### {name}")
-                st.caption(text)
+        _render_empty()
         return
-
     trace = state.get("trace", [])
-    st.subheader("Execution overview")
     metrics = st.columns(4)
-    metrics[0].metric("Agent executions", len(trace))
-    metrics[1].metric("Max iteration", state.get("test_iters", 0))
-    metrics[2].metric("Tests passed", getattr(state.get("test_report"), "passed", 0))
-    metrics[3].metric("Final verdict", getattr(state.get("review"), "verdict", "-"))
+    metrics[0].metric("Agent executions", len(trace), border=True)
+    metrics[1].metric("Max iteration", state.get("test_iters", 0), border=True)
+    metrics[2].metric(
+        "Tests passed", getattr(state.get("test_report"), "passed", 0), border=True
+    )
+    metrics[3].metric(
+        "Final verdict", getattr(state.get("review"), "verdict", "-"), border=True
+    )
     st.subheader("Agent execution trace")
     for message in trace:
-        colour = AGENT_COLOURS.get(message.sender, "#64748b")
-        card = (
-            f'<div class="trace-card" style="border-left-color:{colour}">'
-            f'<div class="trace-heading"><strong>{message.node}</strong>'
-            f'<span class="muted">Iteration {message.iteration}</span></div>'
-            f"<div>{message.summary}</div></div>"
-        )
         st.markdown(
-            card,
-            unsafe_allow_html=True,
+            f":{COLOURS.get(message.sender, 'gray')}[**{message.node}**] - "
+            f"{message.summary}"
         )
-    _results(state, st.session_state.run_requirement)
+    _render_results(state, st.session_state.run_requirement)
 
 
 if __name__ == "__main__":
