@@ -5,7 +5,7 @@
 """
 from typing import Dict, List, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 AgentName = Literal["user", "planner", "coder", "tester", "sandbox", "reviewer", "system"]
 Verdict = Literal["CODE_BUG", "TEST_BUG", "SPEC_AMBIGUITY"]
@@ -26,6 +26,12 @@ class FunctionSpec(BaseModel):
     signature: str                # "def add(a: int, b: int) -> int"
     description: str
     file: str = "solution.py"
+
+    @field_validator("signature")
+    @classmethod
+    def _strip_trailing_colon(cls, v: str) -> str:
+        # 模型常写成 "def f(x) -> int:"，统一去掉结尾冒号，方便 ast 解析
+        return v.strip().rstrip(":").rstrip()
 
 
 class Plan(BaseModel):

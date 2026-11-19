@@ -4,7 +4,7 @@ from pydantic import ValidationError
 
 from devcrew.graph import RECURSION_LIMIT, build_graph
 from devcrew.mocks import MOCK_NODES
-from devcrew.schemas import (Attribution, AttributionDraft, CoderOutput, FailureVerdict, Plan,
+from devcrew.schemas import (Attribution, AttributionDraft, CoderOutput, FailureVerdict, FunctionSpec, Plan,
                              ReviewComment, ReviewerLLMOutput, ReviewVerdict, RunConfig, SpecItem,
                              StaticReport, TesterOutput)
 from devcrew.state import initial_state
@@ -16,6 +16,12 @@ def test_spec_item_id_format():
     SpecItem(id="AC-1", text="x")
     with pytest.raises(ValidationError):
         SpecItem(id="ac1", text="x")
+
+
+def test_signature_trailing_colon_is_stripped():
+    # DeepSeek 实际返回过 "def is_palindrome(s: str) -> bool:"
+    spec = FunctionSpec(name="f", signature=" def f(s: str) -> bool: ", description="d")
+    assert spec.signature == "def f(s: str) -> bool"
 
 
 def test_attribution_priority():
