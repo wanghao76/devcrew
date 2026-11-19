@@ -582,6 +582,7 @@ git push -u origin feat/eval-baselines
 
 | 文档 | 什么时候看 |
 |---|---|
+| `DevCrew_实际运行记录.md` | 对照一次真实运行的完整命令和输出，包括一个成功案例和一个失败案例 |
 | `DevCrew_方案.md` | 了解项目目标、评分对应、实验设计、slides 和视频安排 |
 | `DevCrew_分工与协作方案.md` | 了解每人负责什么、每天的计划 |
 | `DevCrew_Schema规范.md` | 写或修改 Agent 之前，查字段归属和节点接口 |
