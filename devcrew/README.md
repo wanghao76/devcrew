@@ -38,14 +38,11 @@ Run the Streamlit UI:
 streamlit run app.py
 ```
 
-The current UI reviews a prepared addition example: the plan, implementation,
-and test-writing are supplied by mock nodes. Pytest, static analysis, and the
-LLM Reviewer run for real. The downloaded `solution.py` is the example code;
-custom requirements will be supported after the other agents are integrated.
+The UI runs all four real agents on the requirement typed into the form, so a
+model API key is required (see the repository root `README.md`, section 4).
 
-`devcrew/ui_adapter.py` owns the temporary example input and node bindings,
-keeping them separate from the UI and the shared graph. Replace those bindings
-and the example input when the real agents are ready.
+`devcrew/ui_adapter.py` owns the node bindings (`select_nodes()`) and the
+default example input, keeping them separate from the UI and the shared graph.
 
 The single-page UI provides four-stage progress indicators, a 420px scrolling
 execution timeline, result tabs, and a direct solution download. After a code
