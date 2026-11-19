@@ -3,3 +3,7 @@ pydantic>=2,<3
 openai>=1.54,<3
 python-dotenv>=1,<2
 pytest
+ruff
+radon
+bandit
+streamlit

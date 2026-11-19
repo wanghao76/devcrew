@@ -1,0 +1,26 @@
+[theme]
+paddingTop = "0.35rem"
+paddingBottom = "2rem"
+font = "sans serif"
+baseRadius = "12px"
+buttonRadius = "8px"
+showWidgetBorder = true
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+
+[theme.light]
+primaryColor = "#C9344C"
+backgroundColor = "#F8FAFC"
+secondaryBackgroundColor = "#EEF2F8"
+textColor = "#0F172A"
+borderColor = "#D8E1ED"
+linkColor = "#B92C43"
+codeBackgroundColor = "#EEF2F8"
+
+[theme.dark]
+primaryColor = "#FB7185"
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1E293B"
+textColor = "#E2E8F0"
+borderColor = "#334155"
+linkColor = "#FDA4AF"
+codeBackgroundColor = "#1E293B"
