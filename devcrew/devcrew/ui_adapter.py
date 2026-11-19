@@ -1,12 +1,11 @@
-"""Temporary example graph adapter; replace node bindings after integration."""
+"""Graph adapter for the UI: wires the real agents and emits node start events."""
 
 from functools import wraps
 
 from langgraph.config import get_stream_writer
 
-from devcrew.agents.reviewer import reviewer_node
+from devcrew.agents import select_nodes
 from devcrew.graph import RECURSION_LIMIT, build_graph
-from devcrew.mocks import MOCK_NODES
 from devcrew.state import initial_state
 
 EXAMPLE_REQUIREMENT = (
@@ -35,14 +34,13 @@ def _with_start_event(name, node):
     return wrapped
 
 
-def example_stream():
-    """Real pytest and Reviewer; the other agents supply fixed example data."""
-    nodes = {**MOCK_NODES, "reviewer": reviewer_node}
+def workflow_stream(requirement):
+    """Run all four real agents on the requirement and stream node events."""
     graph = build_graph(
-        {name: _with_start_event(name, node) for name, node in nodes.items()}
+        {name: _with_start_event(name, node) for name, node in select_nodes().items()}
     )
     yield from graph.stream(
-        initial_state(EXAMPLE_REQUIREMENT, task_id="mock-happy"),
+        initial_state(requirement, task_id="ui"),
         stream_mode=["custom", "updates"],
         config={"recursion_limit": RECURSION_LIMIT},
     )

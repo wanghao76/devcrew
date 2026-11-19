@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 
@@ -54,18 +55,21 @@ def _write_safe(root: Path, filename: str, content: str) -> Path:
 
 
 def _run_json(command: list[str], root: Path) -> tuple[object | None, str | None]:
+    # Run each tool from the current interpreter so it works without an activated venv.
+    tool = command[0]
     try:
         result = subprocess.run(
-            command, cwd=root, capture_output=True, text=True, timeout=30, check=False
+            [sys.executable, "-m", *command], cwd=root, capture_output=True, text=True,
+            timeout=30, check=False,
         )
-    except FileNotFoundError:
-        return None, f"{command[0]} unavailable"
     except subprocess.TimeoutExpired:
-        return None, f"{command[0]} timed out after 30 seconds"
+        return None, f"{tool} timed out after 30 seconds"
+    if "No module named" in result.stderr:
+        return None, f"{tool} unavailable"
     try:
         return json.loads(result.stdout or "{}"), None
     except json.JSONDecodeError:
-        return None, f"{command[0]} returned non-JSON output"
+        return None, f"{tool} returned non-JSON output"
 
 
 def _ruff(root: Path, paths: list[str]) -> tuple[int, list[str]]:

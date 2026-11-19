@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from devcrew.ui_adapter import (
     EXAMPLE_REQUIREMENT,
     STAGES,
     StageProgress,
-    example_stream,
+    workflow_stream,
 )
 
 
@@ -38,17 +39,24 @@ ROLE_ICONS = {
     "system": "task_alt",
 }
 
+# autoscroll needs a newer Streamlit than Python 3.9 can install; skip it there.
+_AUTOSCROLL = (
+    {"autoscroll": True}
+    if "autoscroll" in inspect.signature(st.container).parameters
+    else {}
+)
+
 
 def _render_trace(trace) -> None:
     st.subheader("Execution timeline")
     st.caption(f"{len(trace)} steps recorded. Scroll to explore earlier steps.")
     with st.container(
-        height=420, border=True, key="execution_timeline", autoscroll=True
+        height=420, border=True, key="execution_timeline", **_AUTOSCROLL
     ):
         attempts: dict[str, int] = {}
         for index, message in enumerate(trace, start=1):
             attempts[message.type] = attempts.get(message.type, 0) + 1
-            card = describe_message(message, example=True)
+            card = describe_message(message)
             colour = COLOURS.get(message.sender, "gray")
             icon = ROLE_ICONS.get(message.sender, "update")
             with st.container(border=True):
@@ -87,7 +95,7 @@ def _render_progress(progress: StageProgress) -> None:
         "failed": ("red", "error", "Failed"),
     }
     st.subheader("Execution progress")
-    for column, stage in zip(st.columns(4), STAGES, strict=True):
+    for column, stage in zip(st.columns(4), STAGES):
         colour, icon, label = labels[progress.statuses[stage]]
         with column:
             with st.container(border=True):
@@ -96,12 +104,12 @@ def _render_progress(progress: StageProgress) -> None:
     st.progress(progress.percent, text=f"{progress.percent // 25} / 4 stages complete")
 
 
-def _run() -> dict[str, Any]:
-    state = initial_state(EXAMPLE_REQUIREMENT, task_id="mock-happy")
+def _run(requirement: str) -> dict[str, Any]:
+    state = initial_state(requirement, task_id="ui")
     progress = StageProgress()
     slot = st.empty()
     try:
-        for mode, update in example_stream():
+        for mode, update in workflow_stream(requirement):
             if mode == "custom":
                 progress.start(update["node"])
             else:
@@ -134,7 +142,7 @@ def _render_results(state: dict[str, Any], requirement: str) -> None:
                 st.markdown("### :material/code: solution.py")
                 st.caption(
                     f"Python solution · {len(solution.splitlines())} lines · "
-                    "Prepared addition example"
+                    f"final status: {state.get('final_status')}"
                 )
             with download:
                 st.download_button(
@@ -189,29 +197,29 @@ def _render_empty() -> None:
             "Planner",
             "Understand the task",
             "Plan and acceptance criteria.",
-            "Example data",
+            "Live agent",
         ),
         (
             "Coder",
             "Build the solution",
             "Implementation in solution.py.",
-            "Example data",
+            "Live agent",
         ),
         (
             "Tester",
             "Check the behavior",
-            "Prepared tests executed with pytest.",
-            "Live tests",
+            "Tests written from the plan, run with pytest.",
+            "Live agent",
         ),
         (
             "Reviewer",
             "Review the result",
             "LLM review and static analysis.",
-            "Live review",
+            "Live agent",
         ),
     ]
     for column, (name, action, description, source) in zip(
-        st.columns(4), roles, strict=True
+        st.columns(4), roles
     ):
         with column:
             with st.container(border=True, height="stretch"):
@@ -231,18 +239,17 @@ def main() -> None:
         st.image(
             str(Path(__file__).parent / "assets" / "devcrew-mark.svg"),
             width=56,
-            alt="DevCrew: four connected agent roles",
         )
-        with st.container(width="stretch", gap="xxsmall"):
+        with st.container(width="stretch", gap="small"):
             st.title("DevCrew")
             st.caption("Plan. Build. Test. Review.")
-        st.badge("Reviewer demo", icon=":material/science:", color="violet")
+        st.badge("Live agents", icon=":material/groups:", color="violet")
     # This UI's explicit local config takes precedence over stale host variables.
     # The .env file is ignored by Git and is never included in downloads.
     load_dotenv(Path(__file__).parent / ".env", override=True)
     st.caption(
-        "Try the prepared addition example. Planning, code and tests use example "
-        "data; test execution and the LLM Reviewer run for real."
+        "Describe a Python function. Planner, Coder, Tester and Reviewer all call "
+        "the configured model; tests run locally with pytest."
     )
     st.session_state.setdefault("result", None)
     st.session_state.setdefault("run_requirement", EXAMPLE_REQUIREMENT)
@@ -276,13 +283,8 @@ def main() -> None:
             try:
                 st.session_state.result = None
                 st.session_state.progress = None
-                if requirement.strip() != EXAMPLE_REQUIREMENT:
-                    st.info(
-                        "The real Planner is not connected yet. This run reviews "
-                        "the prepared addition example shown in the Plan tab."
-                    )
-                st.session_state.run_requirement = EXAMPLE_REQUIREMENT
-                st.session_state.result = _run()
+                st.session_state.run_requirement = requirement.strip()
+                st.session_state.result = _run(requirement.strip())
             except AuthenticationError:
                 st.error(
                     "The model API key was rejected. Update OPENAI_API_KEY. "
