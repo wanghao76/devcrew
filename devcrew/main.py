@@ -2,6 +2,7 @@
 
     python main.py "add two numbers"                 # 全 mock，happy 场景
     python main.py "add two numbers" --scenario stall
+    python main.py "add two numbers" --coder real    # 真实 Coder，其余 mock（需要 .env 里的 API key）
 """
 import argparse
 from pathlib import Path
@@ -17,6 +18,8 @@ def main():
     parser.add_argument("--scenario", default="happy")
     parser.add_argument("--planner", choices=["mock", "real"], default="mock",
                         help="use the real Planner with mock downstream Agents")
+    parser.add_argument("--coder", choices=["mock", "real"], default="mock",
+                        help="use the real Coder for both coder and coder_fix")
     parser.add_argument("--out", default="results/runs")
     args = parser.parse_args()
 
@@ -24,6 +27,9 @@ def main():
     if args.planner == "real":
         from devcrew.agents.planner import planner_node
         nodes["planner"] = planner_node
+    if args.coder == "real":
+        from devcrew.agents.coder import CODER_NODES
+        nodes.update(CODER_NODES)
     app = build_graph(nodes)
     task_id = f"mock-{args.scenario}"
     final = app.invoke(initial_state(args.requirement, task_id=task_id),
